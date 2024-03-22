@@ -37,7 +37,7 @@ class AbstractBaseScheduler(ABC):
 
 
 class HourlyScheduler(AbstractBaseScheduler):
-    SLEEP_SECONDS = 3600
+    SLEEP_SECONDS = 1
 
     def start(self, *args, **kwargs) -> None:
         def hourly_task():
@@ -45,8 +45,9 @@ class HourlyScheduler(AbstractBaseScheduler):
                 if self.tv.STATE == TVStates.ACTIVE:
                     self._improve_actions()
                 time.sleep(self.SLEEP_SECONDS)
-
-        threading.Thread(target=hourly_task, daemon=True).start()
+        th = threading.Thread(target=hourly_task)
+        th.start()
+        return th
 
     def _improve_actions(self) -> dict:
         return {"message": "Actions are improved"}
@@ -56,14 +57,14 @@ class NightlyScheduler(AbstractBaseScheduler):
 
     def start(self, *args, **kwargs) -> None:
         def nightly_update_task():
-            now = datetime.now()
-            midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            if now >= midnight:
-                midnight += timedelta(days=1)
             while not self._stop_event.is_set():
+                now = datetime.now()
+                midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                if now >= midnight:
+                    midnight += timedelta(days=1)
+                time.sleep((midnight - now).total_seconds())
                 if self.tv.STATE == TVStates.ACTIVE or self.tv.STATE == TVStates.STANDBY:
                     self._check_software()
-                time.sleep((midnight - now).total_seconds())
 
         threading.Thread(target=nightly_update_task, daemon=True).start()
 
@@ -91,9 +92,9 @@ class CustomScheduler(AbstractBaseScheduler):
                 )
                 if now >= alarm_time:
                     alarm_time += timedelta(days=1)
+                time.sleep((alarm_time - now).total_seconds())
                 if self.tv.STATE == TVStates.ACTIVE or self.tv.STATE == TVStates.STANDBY:
                     self._launch_program(now)
-                time.sleep((alarm_time - now).total_seconds())
 
         threading.Thread(target=prog_alarm_task, daemon=True).start()
 
@@ -128,10 +129,18 @@ class CustomSchedulerHolder:
 if __name__ == "__main__":
     tv = TV()
     hourly = HourlyScheduler(tv)
-    nightly = NightlyScheduler(tv)
+    # nightly = NightlyScheduler(tv)
 
-    hourly.start()
-    nightly.start()
+    th:threading.Thread = hourly.start()
+    is_alive = True
+    a = 1
+    while is_alive:
+        print(th.is_alive())
+        if a > 10:
+            hourly.stop()
+        a += 1
+
+    # nightly.start()
 
 
     def on_prog_alarm_update(event: dict):  # this function is subscribed to the System Registry
